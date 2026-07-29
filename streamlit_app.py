@@ -724,50 +724,53 @@ if st.session_state["user_mode"] == "teacher":
                     st.markdown("**Pattern structures returned:** " + " | ".join(signatures))
             
             png_path = backend_response.get("png_path")
+            png_b64 = backend_response.get("png_b64")
             worksheet_path = backend_response.get("worksheet_path")
+            worksheet_b64 = backend_response.get("worksheet_b64")
+
+            # Decode b64 image bytes; fall back to reading from local path for local dev
+            def _img_bytes(b64_str, path_str):
+                if b64_str:
+                    return base64.b64decode(b64_str)
+                if path_str:
+                    p = Path(path_str)
+                    if p.exists():
+                        return p.read_bytes()
+                return None
+
+            preview_bytes = _img_bytes(png_b64, png_path)
+            worksheet_bytes = _img_bytes(worksheet_b64, worksheet_path)
 
             preview_left, preview_right = st.columns(2, gap="large")
 
             with preview_left:
                 st.markdown('<div class="output-frame">', unsafe_allow_html=True)
                 st.markdown("<h3>🖼️ Activity Preview Image</h3>", unsafe_allow_html=True)
-                if png_path:
-                    candidate_png = Path(png_path)
-                    if candidate_png.exists():
-                        st.image(str(candidate_png), use_container_width=True)
-                    else:
-                        st.info("The preview image asset file has not been found located on active server workspace disks.")
+                if preview_bytes:
+                    st.image(preview_bytes, use_container_width=True)
                 else:
-                    st.info("No Preview Image relative paths returned by processing servers yet.")
+                    st.info("Preview image not available yet.")
 
-                if worksheet_path:
-                    candidate_ws = Path(worksheet_path)
-                    if candidate_ws.exists():
-                        st.download_button(
-                            label="Download Worksheet as PNG",
-                            data=candidate_ws.read_bytes(),
-                            file_name=candidate_ws.name,
-                            mime="image/png",
-                            use_container_width=True,
-                        )
-                    else:
-                        st.button("Download Worksheet as PNG", use_container_width=True, disabled=True)
+                if worksheet_bytes:
+                    fname = Path(worksheet_path).name if worksheet_path else "worksheet.png"
+                    st.download_button(
+                        label="Download Worksheet as PNG",
+                        data=worksheet_bytes,
+                        file_name=fname,
+                        mime="image/png",
+                        use_container_width=True,
+                    )
                 else:
-                    st.button("Download Worksheet as PNG", use_container_width=True, disabled=True)    
+                    st.button("Download Worksheet as PNG", use_container_width=True, disabled=True)
                 st.markdown("</div>", unsafe_allow_html=True)
 
             with preview_right:
                 st.markdown('<div class="output-frame">', unsafe_allow_html=True)
                 st.markdown("<h3>📝 Full Worksheet</h3>", unsafe_allow_html=True)
-                if worksheet_path:
-                    candidate_worksheet = Path(worksheet_path)
-                    if candidate_worksheet.exists():
-                        with candidate_worksheet.open("rb") as worksheet_file:
-                            st.image(worksheet_file.read(), use_container_width=True)
-                    else:
-                        st.info("The requested worksheet path descriptor file does not exist on target servers.")
+                if worksheet_bytes:
+                    st.image(worksheet_bytes, use_container_width=True)
                 else:
-                    st.info("No composite page layout path references passed back from processing pipelines.")
+                    st.info("Worksheet not available yet.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown('<div style="margin-top: 1.5rem;"></div>', unsafe_allow_html=True)
@@ -966,23 +969,27 @@ else:
         # ── Pattern game ──────────────────────────────────────────────
         if activity == "pattern":
             image_path = None
+            image_bytes = None
             if isinstance(puzzle, dict):
-                candidate = puzzle.get("__image_path")
-                if isinstance(candidate, str) and candidate and Path(candidate).exists():
-                    image_path = candidate
+                b64 = puzzle.get("__image_b64")
+                if b64:
+                    image_bytes = base64.b64decode(b64)
+                else:
+                    candidate = puzzle.get("__image_path")
+                    if isinstance(candidate, str) and candidate and Path(candidate).exists():
+                        image_path = candidate
 
-            if image_path:
+            if image_bytes:
+                st.image(image_bytes, use_container_width=True)
+            elif image_path:
                 st.image(image_path, use_container_width=True)
             else:
-                fallback_png = response.get("png_path") if isinstance(response, dict) else None
-                if fallback_png and Path(fallback_png).exists():
-                    st.image(fallback_png, use_container_width=True)
-                else:
-                    st.warning("Puzzle image not available.")
+                st.warning("Puzzle image not available.")
 
             sequence = puzzle.get("sequence") if isinstance(puzzle, dict) else []
             if not isinstance(sequence, list):
                 sequence = []
+            # crop from local path only; b64 images used as fallback display above
             option_card_images = _extract_pattern_token_cards(image_path, tuple(sequence)) if image_path else {}
 
             all_tokens = []
@@ -1128,9 +1135,19 @@ else:
                 st.session_state[clicks_key] = []
             clicks = st.session_state[clicks_key]
 
-            seq_image_path = puzzle.get("__image_path") if isinstance(puzzle, dict) else None
-            if isinstance(seq_image_path, str) and seq_image_path and not Path(seq_image_path).exists():
-                seq_image_path = None
+            seq_image_path = None
+            seq_image_bytes = None
+            if isinstance(puzzle, dict):
+                b64 = puzzle.get("__image_b64")
+                if b64:
+                    seq_image_bytes = base64.b64decode(b64)
+                else:
+                    candidate_path = puzzle.get("__image_path")
+                    if isinstance(candidate_path, str) and candidate_path and Path(candidate_path).exists():
+                        seq_image_path = candidate_path
+
+            if seq_image_bytes:
+                st.image(seq_image_bytes, use_container_width=True)
             card_images = _extract_sequencing_item_cards(seq_image_path, n) if seq_image_path else []
 
             st.markdown("<div class='student-answer-prompt'>Tap the items from <b>SMALLEST</b> to <b>BIGGEST</b>! 🐾</div>", unsafe_allow_html=True)

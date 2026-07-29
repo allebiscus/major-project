@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import base64
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -50,6 +51,17 @@ def ensure_correct_python_environment():
         check=False,
     )
     raise SystemExit(0)
+
+
+def _file_to_b64(path):
+    """Return base64-encoded bytes of a file, or None if missing."""
+    try:
+        p = Path(path)
+        if p and p.exists():
+            return base64.b64encode(p.read_bytes()).decode()
+    except Exception:
+        pass
+    return None
 
 
 def latest_png_path(folder_path):
@@ -480,12 +492,14 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
                     image_path = notebook_ns["generate_pattern_image"](payload)
                     if image_path and isinstance(payload, dict):
                         payload["__image_path"] = image_path
+                        payload["__image_b64"] = _file_to_b64(image_path)
 
             elif activity == "sequencing":
                 if interactive and "generate_size_ordering_from_llm" in notebook_ns:
                     image_path = notebook_ns["generate_size_ordering_from_llm"](payload)
                     if image_path and isinstance(payload, dict):
                         payload["__image_path"] = image_path
+                        payload["__image_b64"] = _file_to_b64(image_path)
 
     worksheet_function_name = get_worksheet_name(activity, difficulty)
     worksheet_path = None
@@ -500,6 +514,7 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
     else:
         png_folder = BASE_DIR / "activities" / "sequencing"
 
+    latest_png = latest_png_path(png_folder)
     return {
         "activity": activity,
         "difficulty": difficulty,
@@ -507,7 +522,9 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
         "payloads": payloads,
         "worksheet_function": worksheet_function_name,
         "worksheet_path": worksheet_path,
-        "png_path": latest_png_path(png_folder),
+        "worksheet_b64": _file_to_b64(worksheet_path),
+        "png_path": latest_png,
+        "png_b64": _file_to_b64(latest_png),
     }
 
 
