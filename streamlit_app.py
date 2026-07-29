@@ -22,19 +22,19 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_BACKEND_URL = os.getenv("WORKSHEET_BACKEND_URL", "http://localhost:8000/generate")
 EXAMPLE_ACTIVITY_IMAGES = {
     "pattern": {
-        "beginner": BASE_DIR / "activities" / "pattern" / "pattern_activity_423.png",
-        "intermediate": BASE_DIR / "activities" / "pattern" / "pattern_activity_200.png",
-        "hard": BASE_DIR / "activities" / "pattern" / "pattern_activity_88.png",
+        "beginner": BASE_DIR / "pattern_activity_423.png",
+        "intermediate": BASE_DIR / "pattern_activity_200.png",
+        "hard": BASE_DIR / "pattern_activity_88.png",
     },
     "logic": {
-        "beginner": BASE_DIR / "activities" / "logic problem solving" / "BEGINNER_120.png",
-        "intermediate": BASE_DIR / "activities" / "logic problem solving" / "INTERMEDDIATE_101.png",
-        "hard": BASE_DIR / "activities" / "logic problem solving" / "HARD_127.png",
+        "beginner": BASE_DIR / "BEGINNER_120.png",
+        "intermediate": BASE_DIR / "INTERMEDDIATE_101.png",
+        "hard": BASE_DIR / "HARD_127.png",
     },
     "sequencing": {
-        "beginner": BASE_DIR / "activities" / "sequencing" / "size_ordering_128.png",
-        "intermediate": BASE_DIR / "activities" / "sequencing" / "size_ordering_123.png",
-        "hard": BASE_DIR / "activities" / "sequencing" / "size_ordering_125.png",
+        "beginner": BASE_DIR / "size_ordering_128.png",
+        "intermediate": BASE_DIR / "size_ordering_123.png",
+        "hard": BASE_DIR / "size_ordering_125.png",
     },
 }
 
