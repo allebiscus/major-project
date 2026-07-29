@@ -1,0 +1,6 @@
+streamlit
+Pillow
+requests
+google-generativeai
+python-dotenv
+cairosvg
