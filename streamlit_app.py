@@ -201,18 +201,22 @@ def _get_option_emoji(option_name):
 
 
 @st.cache_data(show_spinner=False)
-def _extract_pattern_token_cards(image_path, sequence_tuple, card_size=200, spacing=20):
+def _extract_pattern_token_cards(image_bytes, image_path, sequence_tuple, card_size=200, spacing=20):
     """Extract per-token card crops from a generated pattern strip image."""
     card_bytes_by_token = {}
-    if not image_path:
-        return card_bytes_by_token
-
-    image_file = Path(str(image_path))
-    if not image_file.exists():
+    if not image_bytes and not image_path:
         return card_bytes_by_token
 
     try:
-        with Image.open(image_file) as src:
+        if image_bytes:
+            source = io.BytesIO(image_bytes)
+        else:
+            image_file = Path(str(image_path))
+            if not image_file.exists():
+                return card_bytes_by_token
+            source = image_file
+
+        with Image.open(source) as src:
             image = src.convert("RGBA")
     except Exception:
         return card_bytes_by_token
@@ -239,15 +243,21 @@ def _extract_pattern_token_cards(image_path, sequence_tuple, card_size=200, spac
     return card_bytes_by_token
 
 @st.cache_data(show_spinner=False)
-def _extract_sequencing_item_cards(image_path, n_items, card_size=320, spacing=30):
+def _extract_sequencing_item_cards(image_bytes, image_path, n_items, card_size=320, spacing=30):
     card_bytes_list = []
-    if not image_path:
+    if not image_bytes and not image_path:
         return card_bytes_list
-    image_file = Path(str(image_path))
-    if not image_file.exists():
-        return card_bytes_list
+
     try:
-        with Image.open(image_file) as src:
+        if image_bytes:
+            source = io.BytesIO(image_bytes)
+        else:
+            image_file = Path(str(image_path))
+            if not image_file.exists():
+                return card_bytes_list
+            source = image_file
+
+        with Image.open(source) as src:
             image = src.convert("RGBA")
     except Exception:
         return card_bytes_list
@@ -628,6 +638,8 @@ with header_btn_container:
         t_bg = "background: var(--bubblegum) !important; color: white !important; box-shadow: 3px 3px 0px var(--midnight) !important;" if is_t_selected else "background: rgba(255, 123, 156, 0.18) !important; color: var(--midnight) !important; box-shadow: 3px 3px 0px var(--midnight) !important;"
         if st.button("Teacher Mode", key="toggle_teacher_view"):
             st.session_state["user_mode"] = "teacher"
+            st.session_state["student_feedback"] = ""
+            st.session_state["student_feedback_source"] = ""
             st.rerun()
         st.markdown(f"<style>div[data-testid='stSubheader'] + div .stButton:nth-child(1) button {{ {t_bg} }}</style>", unsafe_allow_html=True)
 
@@ -637,6 +649,8 @@ with header_btn_container:
         s_bg = "background: var(--bubblegum) !important; color: white !important; box-shadow: 3px 3px 0px var(--midnight) !important;" if is_s_selected else "background: rgba(255, 123, 156, 0.18) !important; color: var(--midnight) !important; box-shadow: 3px 3px 0px var(--midnight) !important;"
         if st.button("Student Mode", key="toggle_student_view"):
             st.session_state["user_mode"] = "student"
+            st.session_state["student_feedback"] = ""
+            st.session_state["student_feedback_source"] = ""
             st.rerun()
         st.markdown(f"<style>div[data-testid='stSubheader'] + div .stButton:nth-child(2) button {{ {s_bg} }}</style>", unsafe_allow_html=True)
     st.markdown('</div><br>', unsafe_allow_html=True)
@@ -800,6 +814,7 @@ else:
             st.session_state["student_response"] = student_response
             st.session_state["student_current_index"] = 0
             st.session_state["student_feedback"] = ""
+            st.session_state["student_feedback_source"] = ""
             st.session_state["student_options"] = {}
             st.session_state["student_completed"] = False
             st.rerun()
@@ -876,6 +891,7 @@ else:
                     st.session_state.pop("student_response", None)
                     st.session_state["student_current_index"] = 0
                     st.session_state["student_feedback"] = ""
+                    st.session_state["student_feedback_source"] = ""
                     st.session_state["student_options"] = {}
                     st.rerun()
         else:
@@ -905,11 +921,14 @@ else:
         st.markdown(f"<div style='font-family:Fredoka,sans-serif;font-size:1.7rem;font-weight:700;color:#2e294e;margin-bottom:0.4rem;'>Puzzle {current_index + 1} of {len(payloads)}</div>", unsafe_allow_html=True)
 
         feedback = st.session_state.get("student_feedback", "")
+        feedback_source = st.session_state.get("student_feedback_source", "")
         _sfx_uid = st.session_state.get("student_current_index", 0) * 10 + (1 if feedback == "correct" else 2)
-        if feedback == "wrong":
+        if feedback == "wrong" and feedback_source == "answer":
             _play_sound("wrong.mp3")
             st.markdown("<div class='quiz-feedback error'>Oh no, that's not right. Try again!</div>", unsafe_allow_html=True)
-        elif feedback == "correct":
+            st.session_state["student_feedback"] = ""
+            st.session_state["student_feedback_source"] = ""
+        elif feedback == "correct" and feedback_source == "answer":
             _play_sound("correct.mp3")
             st.markdown("<div class='quiz-feedback success'>Correct! Well done.</div>", unsafe_allow_html=True)
             # Unique id per puzzle so React re-mounts the animation every correct answer
@@ -965,6 +984,8 @@ else:
 <div class="cc{_cbust}" style="left:44%; width:20px;height:22px;background:#ff7b9c;border-radius:50%;animation-duration:3.0s;animation-delay:0.14s;"></div>
 <div class="cc{_cbust}" style="left:57%; width:18px;height:16px;background:#06d6a0;border-radius:4px;animation-duration:2.6s;animation-delay:0.20s;"></div>
 """, unsafe_allow_html=True)
+            st.session_state["student_feedback"] = ""
+            st.session_state["student_feedback_source"] = ""
 
         # ── Pattern game ──────────────────────────────────────────────
         if activity == "pattern":
@@ -989,8 +1010,7 @@ else:
             sequence = puzzle.get("sequence") if isinstance(puzzle, dict) else []
             if not isinstance(sequence, list):
                 sequence = []
-            # crop from local path only; b64 images used as fallback display above
-            option_card_images = _extract_pattern_token_cards(image_path, tuple(sequence)) if image_path else {}
+            option_card_images = _extract_pattern_token_cards(image_bytes, image_path, tuple(sequence))
 
             all_tokens = []
             for payload in payloads:
@@ -1058,9 +1078,11 @@ else:
                             if st.button("Choose", key=f"student_option_{current_index}_{idx}", type="primary", use_container_width=False):
                                 if option == correct_answer:
                                     st.session_state["student_feedback"] = "correct"
+                                    st.session_state["student_feedback_source"] = "answer"
                                     st.session_state["student_current_index"] = current_index + 1
                                 else:
                                     st.session_state["student_feedback"] = "wrong"
+                                    st.session_state["student_feedback_source"] = "answer"
                                 st.rerun()
 
         # ── Logic game ───────────────────────────────────────────────────
@@ -1118,9 +1140,11 @@ else:
                                 if st.button("Tap!", key=f"logic_tap_{current_index}_{cell_idx}", type="primary", use_container_width=True):
                                     if cell_idx == diff_index:
                                         st.session_state["student_feedback"] = "correct"
+                                        st.session_state["student_feedback_source"] = "answer"
                                         st.session_state["student_current_index"] = current_index + 1
                                     else:
                                         st.session_state["student_feedback"] = "wrong"
+                                        st.session_state["student_feedback_source"] = "answer"
                                     st.rerun()
 
         # ── Sequencing game ───────────────────────────────────────────
@@ -1146,9 +1170,7 @@ else:
                     if isinstance(candidate_path, str) and candidate_path and Path(candidate_path).exists():
                         seq_image_path = candidate_path
 
-            if seq_image_bytes:
-                st.image(seq_image_bytes, use_container_width=True)
-            card_images = _extract_sequencing_item_cards(seq_image_path, n) if seq_image_path else []
+            card_images = _extract_sequencing_item_cards(seq_image_bytes, seq_image_path, n)
 
             st.markdown("<div class='student-answer-prompt'>Tap the items from <b>SMALLEST</b> to <b>BIGGEST</b>! 🐾</div>", unsafe_allow_html=True)
 
@@ -1200,11 +1222,14 @@ else:
                                 if len(clicks) == n:
                                     if clicks == correct_click_order:
                                         st.session_state["student_feedback"] = "correct"
+                                        st.session_state["student_feedback_source"] = "answer"
                                         st.session_state["student_current_index"] = current_index + 1
                                         st.session_state.pop(clicks_key, None)
                                     else:
                                         st.session_state["student_feedback"] = "wrong"
+                                        st.session_state["student_feedback_source"] = "answer"
                                         st.session_state[clicks_key] = []
                                 else:
                                     st.session_state["student_feedback"] = ""
+                                    st.session_state["student_feedback_source"] = ""
                                 st.rerun()
