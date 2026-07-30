@@ -67,6 +67,16 @@ def _file_to_b64(path):
 
 _TWEMOJI_CACHE = {}
 
+_SEQUENCING_EMOJI_POOL = [
+    "🐘", "🌳", "🧸", "🍎", "🚗", "🚂", "⭐", "🔺", "⚽", "🎈",
+    "🦋", "🐢", "🐠", "🐸", "🐶", "🐱", "🐻", "🦁", "🐼", "🐰",
+    "🦊", "🐥", "🍓", "🍌", "🍇", "🍕", "🍩", "🍪", "🪁", "📘",
+    "🧩", "🌈", "🌼", "☂️", "🪐", "💎", "🌻", "🥕", "🥦", "🛴",
+    "🎲", "🎯", "🎵", "🚲", "🏀", "🚀", "🛸", "🎁", "🍦", "🧁",
+    "🍉", "🍒", "🐧", "🦄", "🐞", "🐙", "🦕", "🦖", "🐬", "🦜",
+]
+_SEQUENCING_RNG = random.SystemRandom()
+
 
 def _emoji_to_twemoji_code(glyph):
     if not isinstance(glyph, str):
@@ -179,6 +189,44 @@ def _generate_sequencing_image_portable(payload):
         output_path = output_dir / f"size_ordering_{file_number}.png"
     canvas.save(output_path)
     return str(output_path)
+
+
+def _normalize_sequencing_payload(payload, used_emojis=None):
+    if not isinstance(payload, dict):
+        return payload
+
+    jseq = payload.get("jumbled_sequence")
+    if not isinstance(jseq, list) or not jseq:
+        return payload
+
+    items = [dict(item) if isinstance(item, dict) else {} for item in jseq]
+    ratings = [item.get("size_rating") for item in items]
+    if any(not isinstance(rating, int) for rating in ratings):
+        return payload
+
+    used_emojis = set(used_emojis or set())
+    candidates = [emoji for emoji in _SEQUENCING_EMOJI_POOL if emoji not in used_emojis]
+    if not candidates:
+        candidates = list(_SEQUENCING_EMOJI_POOL)
+    chosen_emoji = _SEQUENCING_RNG.choice(candidates)
+    used_emojis.add(chosen_emoji)
+
+    label_lookup = {1: "Tiny", 2: "Small", 3: "Medium", 4: "Large", 5: "Huge"}
+    normalized_items = []
+    for item in items:
+        rating = item.get("size_rating")
+        normalized_item = dict(item)
+        normalized_item["emoji"] = chosen_emoji
+        if isinstance(rating, int) and rating in label_lookup:
+            normalized_item["label"] = label_lookup[rating]
+        normalized_items.append(normalized_item)
+
+    sorted_ratings = sorted(ratings)
+    rank_lookup = {rating: rank for rank, rating in enumerate(sorted_ratings, start=1)}
+    updated = dict(payload)
+    updated["jumbled_sequence"] = normalized_items
+    updated["correct_index_order"] = [rank_lookup[rating] for rating in ratings]
+    return updated
 
 
 def latest_png_path(folder_path):
@@ -500,6 +548,15 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
     if "generate_sequencing_from_llm" in notebook_ns:
         notebook_ns["generate_sequencing_from_llm"] = _generate_sequencing_image_portable
 
+    def _normalize_notebook_sequencing_items(namespace):
+        used_emojis = set()
+        for key, value in list(namespace.items()):
+            if not re.match(rf"^sequencing_{difficulty}_\d+$", key):
+                continue
+            normalized_value = _normalize_sequencing_payload(value, used_emojis)
+            if normalized_value is not None:
+                namespace[key] = normalized_value
+
     # Keep notebook runtime constraints aligned with deterministic validator rules.
     # Beginner patterns must use at least 2 unique items, so exclude the AAAAA target.
     if activity == "pattern":
@@ -516,6 +573,9 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
             beginner_deck = notebook_decks.get("beginner")
             if isinstance(beginner_deck, list):
                 notebook_decks["beginner"] = [sig for sig in beginner_deck if sig != "AAAAA"]
+
+    if activity == "sequencing":
+        _normalize_notebook_sequencing_items(notebook_ns)
 
     payloads = []
 
@@ -547,6 +607,8 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
         ):
             history = notebook_ns["_load_existing_pattern_history"]()
             level_history = history.setdefault(difficulty, {"items": set(), "signatures": set()})
+
+        sequencing_used_emojis = set()
 
         for sample_index, (prompt_name, filename, temperature) in enumerate(
             zip(prompt_names, filename_names, [get_temperature(activity, difficulty)] * 3),
@@ -599,6 +661,9 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
                 batch_signatures.add(last_signature)
             else:
                 payload = generator(prompt_text, filename, temperature=temperature)
+
+            if activity == "sequencing":
+                payload = _normalize_sequencing_payload(payload, sequencing_used_emojis)
 
             notebook_ns[get_payload_name(activity, difficulty, len(payloads) + 1)] = payload
             payloads.append(payload)
