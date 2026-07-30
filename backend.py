@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import base64
+import io
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -62,6 +63,121 @@ def _file_to_b64(path):
     except Exception:
         pass
     return None
+
+
+_TWEMOJI_CACHE = {}
+
+
+def _emoji_to_twemoji_code(glyph):
+    if not isinstance(glyph, str):
+        return None
+    pieces = []
+    for char in glyph.strip():
+        codepoint = ord(char)
+        if codepoint in (0xFE0F, 0xFE0E):
+            continue
+        if codepoint == 0x200D:
+            pieces.append("200d")
+            continue
+        pieces.append(f"{codepoint:x}")
+    return "-".join(pieces) if pieces else None
+
+
+def _load_twemoji_bytes(glyph):
+    code = _emoji_to_twemoji_code(glyph)
+    if not code:
+        return None
+    if code in _TWEMOJI_CACHE:
+        return _TWEMOJI_CACHE[code]
+
+    candidates = [
+        f"https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/{code}.png",
+        f"https://twemoji.maxcdn.com/v/latest/72x72/{code}.png",
+    ]
+    import urllib.request as _request
+
+    for url in candidates:
+        try:
+            request = _request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with _request.urlopen(request, timeout=8) as response:
+                data = response.read()
+                if data.startswith(b"\x89PNG\r\n\x1a\n"):
+                    _TWEMOJI_CACHE[code] = data
+                    return data
+        except Exception:
+            continue
+
+    _TWEMOJI_CACHE[code] = None
+    return None
+
+
+def _generate_sequencing_image_portable(payload):
+    try:
+        from PIL import Image, ImageDraw
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    jseq = payload.get("jumbled_sequence", [])
+    if not isinstance(jseq, list) or not jseq:
+        return None
+
+    card_size = int(payload.get("card_size", 320))
+    spacing = int(payload.get("spacing", 30))
+    answer_box_w = int(payload.get("answer_box_w", 62))
+    answer_box_h = int(payload.get("answer_box_h", 46))
+
+    total_width = (card_size * len(jseq)) + (spacing * (len(jseq) + 1))
+    total_height = card_size + (spacing * 2) + answer_box_h + 12
+    canvas = Image.new("RGBA", (total_width, total_height), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(canvas)
+
+    size_map = {
+        1: int(card_size * 0.18),
+        2: int(card_size * 0.30),
+        3: int(card_size * 0.44),
+        4: int(card_size * 0.60),
+        5: int(card_size * 0.92),
+    }
+
+    x = spacing
+    for item in jseq:
+        glyph = str(item.get("emoji", "")).strip()
+        rating = int(item.get("size_rating", 3))
+        target_px = max(12, size_map.get(rating, size_map[3]))
+
+        left, top = x, spacing
+        right, bottom = x + card_size, spacing + card_size
+        draw.rectangle([left, top, right, bottom], fill=(255, 255, 255, 255), outline=(0, 0, 0, 255), width=3)
+
+        twemoji_bytes = _load_twemoji_bytes(glyph)
+        if twemoji_bytes:
+            try:
+                emoji_img = Image.open(io.BytesIO(twemoji_bytes)).convert("RGBA")
+                emoji_img.thumbnail((int(card_size * 0.82), int(card_size * 0.82)))
+                paste_x = int(left + (card_size - emoji_img.width) / 2)
+                paste_y = int(top + (card_size - emoji_img.height) / 2)
+                canvas.alpha_composite(emoji_img, (paste_x, paste_y))
+            except Exception:
+                pass
+
+        bx = int(left + (card_size - answer_box_w) / 2)
+        by = int(bottom + 8)
+        draw.rectangle([bx, by, bx + answer_box_w, by + answer_box_h], outline=(0, 0, 0, 255), width=3, fill=(255, 255, 255, 255))
+
+        x += card_size + spacing
+
+    output_dir = BASE_DIR / "activities" / "sequencing"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_number = 1
+    output_path = output_dir / f"size_ordering_{file_number}.png"
+    while output_path.exists():
+        file_number += 1
+        output_path = output_dir / f"size_ordering_{file_number}.png"
+    canvas.save(output_path)
+    return str(output_path)
 
 
 def latest_png_path(folder_path):
@@ -495,8 +611,8 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
                         payload["__image_b64"] = _file_to_b64(image_path)
 
             elif activity == "sequencing":
-                if interactive and "generate_size_ordering_from_llm" in notebook_ns:
-                    image_path = notebook_ns["generate_size_ordering_from_llm"](payload)
+                if interactive:
+                    image_path = _generate_sequencing_image_portable(payload)
                     if image_path and isinstance(payload, dict):
                         payload["__image_path"] = image_path
                         payload["__image_b64"] = _file_to_b64(image_path)
