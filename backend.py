@@ -493,6 +493,12 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
     notebook_ns["SELECTED_ACTIVITY"] = activity
     notebook_ns["SELECTED_DIFFICULTY"] = difficulty
 
+    # Use a portable sequencing renderer everywhere so Render/Streamlit Cloud do not
+    # depend on a host emoji font for either teacher worksheets or student puzzles.
+    notebook_ns["generate_size_ordering_from_llm"] = _generate_sequencing_image_portable
+    if "generate_sequencing_from_llm" in notebook_ns:
+        notebook_ns["generate_sequencing_from_llm"] = _generate_sequencing_image_portable
+
     # Keep notebook runtime constraints aligned with deterministic validator rules.
     # Beginner patterns must use at least 2 unique items, so exclude the AAAAA target.
     if activity == "pattern":
@@ -611,9 +617,9 @@ def generate_with_notebook(activity, difficulty, interactive=False, puzzle_count
                         payload["__image_b64"] = _file_to_b64(image_path)
 
             elif activity == "sequencing":
-                if interactive:
-                    image_path = _generate_sequencing_image_portable(payload)
-                    if image_path and isinstance(payload, dict):
+                if interactive and isinstance(payload, dict):
+                    image_path = notebook_ns["generate_size_ordering_from_llm"](payload)
+                    if image_path:
                         payload["__image_path"] = image_path
                         payload["__image_b64"] = _file_to_b64(image_path)
 
