@@ -727,16 +727,6 @@ if st.session_state["user_mode"] == "teacher":
             if generated_at:
                 st.caption(f"Fresh backend response timestamp: {generated_at}")
 
-            if activity_kind == "pattern":
-                payloads = backend_response.get("payloads", [])
-                signatures = []
-                for idx, payload in enumerate(payloads, start=1):
-                    signature = _pattern_signature_from_payload(payload)
-                    if signature:
-                        signatures.append(f"#{idx}: {signature}")
-                if signatures:
-                    st.markdown("**Pattern structures returned:** " + " | ".join(signatures))
-            
             png_path = backend_response.get("png_path")
             png_b64 = backend_response.get("png_b64")
             worksheet_path = backend_response.get("worksheet_path")
