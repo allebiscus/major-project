@@ -156,7 +156,8 @@ def _generate_sequencing_image_portable(payload):
         if twemoji_bytes:
             try:
                 emoji_img = Image.open(io.BytesIO(twemoji_bytes)).convert("RGBA")
-                emoji_img.thumbnail((int(card_size * 0.82), int(card_size * 0.82)))
+                max_emoji_px = max(24, min(int(card_size * 0.86), int(target_px)))
+                emoji_img = emoji_img.resize((max_emoji_px, max_emoji_px))
                 paste_x = int(left + (card_size - emoji_img.width) / 2)
                 paste_y = int(top + (card_size - emoji_img.height) / 2)
                 canvas.alpha_composite(emoji_img, (paste_x, paste_y))
