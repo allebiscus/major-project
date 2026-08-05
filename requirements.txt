@@ -4,3 +4,4 @@ requests
 google-generativeai
 python-dotenv
 cairosvg
+starlette<0.40.0
